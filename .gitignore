@@ -105,20 +105,15 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-<<<<<<< HEAD
 .env_bkp
-=======
-.env
-<<<<<<< HEAD
->>>>>>> 569ef31 (Iniitial_Setup)
-=======
->>>>>>> 569ef31 (Iniitial_Setup)
 .venv
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+.json
+.log
 
 # Spyder project settings
 .spyderproject
