@@ -74,4 +74,5 @@ jobs:
         with:
           app-name: 'Bi-LytixJunior'
           slot-name: 'Production'
+          startup-command: 'streamlit run app.py'
           
