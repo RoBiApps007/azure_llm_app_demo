@@ -1,0 +1,13 @@
+{
+	"servers": {
+		"StickyNotes": {
+			"type": "stdio",
+			"command": "poetry",
+			"args": [
+				"run",
+				"notes_server"
+			]
+		}
+	},
+	"inputs": []
+}
