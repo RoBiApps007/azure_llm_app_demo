@@ -74,6 +74,6 @@ jobs:
         with:
           app-name: 'Bi-LytixJunior'
           slot-name: 'Production'
-          startup-command: 'streamlit run app.py --server.port 8000 --server.address 0.0.0.0 --server.enableCORS=false --server.enableXsrfProtection=false'
+          startup-command: 'streamlit run app.py --server.port 8000 --server.address 127.0.0.1'
 
           
