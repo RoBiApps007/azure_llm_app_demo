@@ -10,6 +10,8 @@ This repository captures the product requirements, research inputs, and delivery
 bibroker-requirements/
 ├── README.md              # This file: overview + navigation
 ├── app.py                 # Streamlit preview for MACD+RSI guidance (used in Azure Web App)
+├── api.py                 # FastAPI REST service for programmatic access
+├── signal_engine.py       # Shared helpers for Streamlit + REST
 ├── requirements.txt       # Runtime deps for Streamlit/Azure
 ├── docs/
 │   ├── requirements.md    # Core specification (personas, workflows, KPIs)
@@ -34,6 +36,20 @@ bibroker-requirements/
 ```
 pip install -r requirements.txt
 streamlit run app.py
+```
+
+## Local REST API (FastAPI)
+
+```
+pip install -r requirements.txt
+uvicorn api:app --reload --port 8001
+```
+
+Example request (Postman / curl):
+```
+curl -X POST http://localhost:8001/signal \\
+  -H "Content-Type: application/json" \\
+  -d '{"tickers": ["ACAG.VI", "GOOG"], "notes": "test run"}'
 ```
 
 Set these environment variables (can go into `.env`):
