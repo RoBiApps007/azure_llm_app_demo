@@ -9,6 +9,8 @@ This repository captures the product requirements, research inputs, and delivery
 ```
 bibroker-requirements/
 ├── README.md              # This file: overview + navigation
+├── app.py                 # Streamlit preview for MACD+RSI guidance (used in Azure Web App)
+├── requirements.txt       # Runtime deps for Streamlit/Azure
 ├── docs/
 │   ├── requirements.md    # Core specification (personas, workflows, KPIs)
 │   ├── personas.md        # Target-user archetypes and journeys
@@ -26,6 +28,22 @@ bibroker-requirements/
 2. **Iterate on requirements** – Keep `docs/requirements.md` as the single source of truth; link out to supporting docs.
 3. **Track decisions** – Any major assumption or scope decision should be summarized here before being mirrored into implementation backlogs.
 4. **Hand off to delivery** – Once requirements stabilize, we’ll copy the relevant specs into the implementation repo (backend/frontend) and treat this repo as the authoritative reference.
+
+## Local Streamlit preview
+
+```
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+Set these environment variables (can go into `.env`):
+- `LYTIX_JUNIOR_FOUNDRY_URL` – Azure OpenAI/Foundry endpoint
+- `LYTIX_JUNIOR_FOUNDRY_MODEL` – e.g., `gpt-5-nano`
+- `LYTIX_JUNIOR_FOUNDRY_MODEL_VERSION` – e.g., `2024-02-15-preview`
+- `LYTIX_JUNIOR_FOUNDRY_API_KEY` – Azure key (not committed)
+- `USER_AGENT`, `EMBEDDING_MODEL`, etc., as needed
+
+The app exposes timeout sliders + retry controls so we can tune LLM responsiveness before automating the daily run.
 
 ## Outstanding needs
 
