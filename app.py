@@ -1,7 +1,10 @@
 from datetime import datetime
-
+import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import streamlit as st
 
+from persistence import build_repository  # type: ignore
 from signal_engine import (  # type: ignore
     DEFAULT_TIMEOUT,
     DEFAULT_WATCHLIST,
@@ -11,9 +14,132 @@ from signal_engine import (  # type: ignore
     generate_signal,
 )
 
-st.set_page_config(page_title="BiBroker Signals", layout="wide")
-st.title("BiBroker – Default Watchlist Signal (preview)")
+st.set_page_config(page_title="Bi-Lytix Assessment", layout="wide")
+st.title("Bi-Lytix Assessment")
 st.caption("Backend-first workflow: MACD + RSI combo, daily 06:00 assessments")
+
+
+@st.cache_resource
+def bootstrap_repository():
+    return build_repository()
+
+
+try:
+    REPO, REPO_CTX = bootstrap_repository()
+except RuntimeError as exc:  # Database misconfiguration
+    st.error(f"Database unavailable: {exc}")
+    st.stop()
+
+
+def _format_pct(value: float) -> str:
+    if pd.isna(value):
+        return "—"
+    return f"{value:+.2f}%"
+
+
+def _format_price(value: float) -> str:
+    if pd.isna(value):
+        return "—"
+    return f"€{value:,.2f}"
+
+
+def set_selected_ticker(ticker: str) -> None:
+    st.session_state["selected_ticker"] = ticker
+
+
+@st.cache_data(ttl=900)
+def compute_indicators(history: pd.DataFrame) -> pd.DataFrame:
+    df = history.copy()
+    price = df["Close"]
+    df["SMA20"] = price.rolling(20).mean()
+    df["SMA50"] = price.rolling(50).mean()
+
+    ema12 = price.ewm(span=12, adjust=False).mean()
+    ema26 = price.ewm(span=26, adjust=False).mean()
+    df["MACD"] = ema12 - ema26
+    df["MACD_signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
+    df["MACD_hist"] = df["MACD"] - df["MACD_signal"]
+
+    delta = price.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.rolling(window=14).mean()
+    avg_loss = loss.rolling(window=14).mean()
+    rs = avg_gain / avg_loss
+    df["RSI"] = 100 - (100 / (1 + rs))
+    return df.dropna()
+
+
+def build_plotly_dash_chart(ticker: str, history: pd.DataFrame) -> go.Figure:
+    enriched = compute_indicators(history)
+    fig = make_subplots(
+        rows=3,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.03,
+        row_heights=[0.5, 0.25, 0.25],
+        subplot_titles=(
+            f"{ticker} Price & SMAs",
+            "MACD",
+            "RSI",
+        ),
+    )
+
+    fig.add_trace(
+        go.Candlestick(
+            x=enriched.index,
+            open=enriched["Open"],
+            high=enriched["High"],
+            low=enriched["Low"],
+            close=enriched["Close"],
+            name="Price",
+        ),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(x=enriched.index, y=enriched["SMA20"], name="SMA20", line=dict(color="#1f77b4")),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(x=enriched.index, y=enriched["SMA50"], name="SMA50", line=dict(color="#ff7f0e")),
+        row=1,
+        col=1,
+    )
+
+    fig.add_trace(
+        go.Bar(x=enriched.index, y=enriched["MACD_hist"], name="MACD hist", marker_color="#8c564b"),
+        row=2,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(x=enriched.index, y=enriched["MACD"], name="MACD", line=dict(color="#2ca02c")),
+        row=2,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(x=enriched.index, y=enriched["MACD_signal"], name="Signal", line=dict(color="#d62728")),
+        row=2,
+        col=1,
+    )
+
+    fig.add_trace(
+        go.Scatter(x=enriched.index, y=enriched["RSI"], name="RSI", line=dict(color="#9467bd")),
+        row=3,
+        col=1,
+    )
+    fig.add_hrect(y0=30, y1=70, line_width=0, fillcolor="rgba(200,200,200,0.2)", row=3, col=1)
+    fig.update_yaxes(range=[0, 100], row=3, col=1)
+
+    fig.update_layout(
+        height=800,
+        showlegend=True,
+        template="plotly_white",
+        margin=dict(l=40, r=20, t=60, b=40),
+    )
+    return fig
+
 
 with st.sidebar:
     st.subheader("LLM Runtime")
@@ -24,6 +150,52 @@ with st.sidebar:
 
 st.write("### Default watchlist")
 st.table(DEFAULT_WATCHLIST)
+
+st.write("### Watchlist performance snapshot")
+if st.button("Refresh market data from source", type="secondary"):
+    with st.spinner("Fetching latest OHLC data and persisting to Postgres…"):
+        updates = REPO.refresh_watchlist_history(REPO_CTX.watchlist_id, DEFAULT_WATCHLIST)
+    st.session_state["refresh_message"] = f"Updated {len(updates)} tickers from yfinance."
+    st.experimental_rerun()
+
+if message := st.session_state.pop("refresh_message", None):
+    st.success(message)
+
+watchlist_df, history_map = REPO.fetch_watchlist_snapshot(REPO_CTX.watchlist_id)
+
+if watchlist_df.empty:
+    st.warning("No cached market data yet. Click **Refresh market data from source** to seed the database.")
+else:
+    header_cols = st.columns([0.4, 1.1, 2.2, 1, 1, 1, 1])
+    for col, label in zip(header_cols, ["", "Ticker", "Name", "Last", "1D", "1W", "1M"]):
+        col.markdown(f"**{label}**")
+
+    for _, row in watchlist_df.iterrows():
+        row_cols = st.columns([0.4, 1.1, 2.2, 1, 1, 1, 1])
+        with row_cols[0]:
+            st.button("⋮", key=f"chart-{row['ticker']}", on_click=set_selected_ticker, args=(row["ticker"],))
+        row_cols[1].markdown(f"**{row['ticker']}**")
+        row_cols[2].markdown(row["name"])
+        row_cols[3].markdown(_format_price(row["price"]))
+        row_cols[4].markdown(_format_pct(row["1D"]))
+        row_cols[5].markdown(_format_pct(row["1W"]))
+        row_cols[6].markdown(_format_pct(row["1M"]))
+
+    st.caption("Click the three-dot button to open the Plotly Dash chart with MACD + RSI for that ticker.")
+
+if "selected_ticker" not in st.session_state and not watchlist_df.empty:
+    available = watchlist_df["ticker"].dropna().tolist()
+    if available:
+        st.session_state["selected_ticker"] = available[0]
+
+selected_ticker = st.session_state.get("selected_ticker")
+if selected_ticker and selected_ticker in history_map:
+    st.write(f"### Plotly Dash view – {selected_ticker}")
+    selected_history = history_map[selected_ticker]
+    chart = build_plotly_dash_chart(selected_ticker, selected_history)
+    st.plotly_chart(chart, use_container_width=True)
+elif not watchlist_df.empty:
+    st.info("Select a ticker with available history to render the chart.")
 
 notes = st.text_area("Optional analyst notes / overrides")
 
