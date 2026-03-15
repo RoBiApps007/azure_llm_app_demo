@@ -54,6 +54,6 @@ jobs:
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'Bi-LytixJunior'
+          app-name: 'bilytixbroker'
           slot-name: 'Production'
           startup-command: 'streamlit run app.py --server.port 8000 --server.address 0.0.0.0'
