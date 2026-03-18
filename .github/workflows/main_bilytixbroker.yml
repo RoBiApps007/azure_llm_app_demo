@@ -67,10 +67,11 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_4BDEA2DACBC14929AF137DB0A824EC5E }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_46B89B5B1E1C42158D38B24C74AC4BA2 }}
 
-      - name: 'Deploy to Azure Web App'
+      - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
-        id: deploy-to-webapp
         with:
-          app-name: 'BilytixBroker'
+          app-name: 'bilytixbroker'
           slot-name: 'Production'
+          startup-command: 'streamlit run app.py --server.port 8000 --server.address 0.0.0.0'
+      
           
