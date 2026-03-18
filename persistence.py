@@ -314,7 +314,7 @@ class WatchlistRepository:
                 )
         return RepositoryContext(user_id=user_id, watchlist_id=watchlist_id)
 
-    def list_shares(self, watchlist_id: uuid.UUID) -> List[Dict[str, object]]:
+    def list_shares(self, watchlist_id: str) -> List[Dict[str, object]]:
         with self.engine.begin() as conn:
             rows = conn.execute(
                 text(
@@ -336,7 +336,7 @@ class WatchlistRepository:
             for row in rows
         ]
 
-    def refresh_watchlist_history(self, watchlist_id: uuid.UUID, watchlist_seed: Sequence[Dict[str, str]]) -> Dict[str, str]:
+    def refresh_watchlist_history(self, watchlist_id: str, watchlist_seed: Sequence[Dict[str, str]]) -> Dict[str, str]:
         shares = self.list_shares(watchlist_id)
         ticker_to_name = {item["ticker"].upper(): item["name"] for item in watchlist_seed}
         updated: Dict[str, str] = {}
@@ -438,7 +438,7 @@ class WatchlistRepository:
                 updated[ticker] = f"{len(history_payload)} pts"
         return updated
 
-    def fetch_watchlist_snapshot(self, watchlist_id: uuid.UUID) -> Tuple[pd.DataFrame, Dict[str, pd.DataFrame]]:
+    def fetch_watchlist_snapshot(self, watchlist_id: str) -> Tuple[pd.DataFrame, Dict[str, pd.DataFrame]]:
         with self.engine.begin() as conn:
             rows = conn.execute(
                 text(
@@ -485,8 +485,8 @@ class WatchlistRepository:
         return df_rows, history_map
 
 
-def build_repository() -> Tuple[WatchlistRepository, RepositoryContext]:
-    database_url = os.getenv("DATABASE_URL")
+def build_repository(database_url: str | None = None) -> Tuple[WatchlistRepository, RepositoryContext]:
+    database_url = database_url or os.getenv("DATABASE_URL")
     if not database_url:
         raise RuntimeError("DATABASE_URL environment variable is not set")
     engine = create_engine(database_url, pool_pre_ping=True, future=True)

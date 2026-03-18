@@ -1,8 +1,11 @@
+import os
 from datetime import datetime
+from typing import Dict
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+import yfinance as yf
 
 from persistence import build_repository  # type: ignore
 from signal_engine import (  # type: ignore
@@ -14,21 +17,32 @@ from signal_engine import (  # type: ignore
     generate_signal,
 )
 
+LOOKBACK_WINDOWS = {
+    "1D": 1,
+    "1W": 5,
+    "1M": 21,
+}
+
 st.set_page_config(page_title="Bi-Lytix Assessment", layout="wide")
 st.title("Bi-Lytix Assessment")
 st.caption("Backend-first workflow: MACD + RSI combo, daily 06:00 assessments")
 
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 
 @st.cache_resource
-def bootstrap_repository():
-    return build_repository()
+def bootstrap_repository(database_url: str):
+    return build_repository(database_url)
 
 
-try:
-    REPO, REPO_CTX = bootstrap_repository()
-except RuntimeError as exc:  # Database misconfiguration
-    st.error(f"Database unavailable: {exc}")
-    st.stop()
+REPO = None
+REPO_CTX = None
+PERSISTENCE_ERROR: str | None = None
+if DATABASE_URL:
+    try:
+        REPO, REPO_CTX = bootstrap_repository(DATABASE_URL)
+    except Exception as exc:  # noqa: BLE001
+        PERSISTENCE_ERROR = str(exc)
 
 
 def _format_pct(value: float) -> str:
@@ -45,6 +59,53 @@ def _format_price(value: float) -> str:
 
 def set_selected_ticker(ticker: str) -> None:
     st.session_state["selected_ticker"] = ticker
+
+
+@st.cache_data(ttl=600, show_spinner="Loading live market data…")
+def load_live_watchlist_snapshot() -> tuple[pd.DataFrame, Dict[str, pd.DataFrame]]:
+    rows = []
+    history_map: Dict[str, pd.DataFrame] = {}
+    for item in DEFAULT_WATCHLIST:
+        ticker = item["ticker"]
+        name = item["name"]
+        try:
+            df = yf.download(
+                ticker,
+                period="6mo",
+                interval="1d",
+                auto_adjust=True,
+                progress=False,
+            )
+        except Exception:  # noqa: BLE001
+            continue
+        if df.empty:
+            continue
+        df.index = pd.to_datetime(df.index)
+        history_map[ticker] = df
+        price_series = df["Close"].dropna()
+        latest_price = price_series.iloc[-1]
+
+        pct_changes = {}
+        for label, steps in LOOKBACK_WINDOWS.items():
+            if len(price_series) <= steps:
+                pct_changes[label] = float("nan")
+                continue
+            past_value = price_series.iloc[-(steps + 1)]
+            pct_changes[label] = ((latest_price - past_value) / past_value) * 100 if past_value else float("nan")
+
+        rows.append(
+            {
+                "ticker": ticker,
+                "name": name,
+                "price": latest_price,
+                "1D": pct_changes["1D"],
+                "1W": pct_changes["1W"],
+                "1M": pct_changes["1M"],
+            }
+        )
+
+    df_rows = pd.DataFrame(rows)
+    return df_rows, history_map
 
 
 @st.cache_data(ttl=900)
@@ -152,19 +213,30 @@ st.write("### Default watchlist")
 st.table(DEFAULT_WATCHLIST)
 
 st.write("### Watchlist performance snapshot")
-if st.button("Refresh market data from source", type="secondary"):
-    with st.spinner("Fetching latest OHLC data and persisting to Postgres…"):
-        updates = REPO.refresh_watchlist_history(REPO_CTX.watchlist_id, DEFAULT_WATCHLIST)
-    st.session_state["refresh_message"] = f"Updated {len(updates)} tickers from yfinance."
-    st.experimental_rerun()
+persistence_enabled = REPO is not None
+if persistence_enabled:
+    if st.button("Refresh market data from source", type="secondary"):
+        with st.spinner("Fetching latest OHLC data and persisting to MySQL…"):
+            updates = REPO.refresh_watchlist_history(REPO_CTX.watchlist_id, DEFAULT_WATCHLIST)
+        st.session_state["refresh_message"] = f"Updated {len(updates)} tickers from yfinance."
+        st.experimental_rerun()
 
-if message := st.session_state.pop("refresh_message", None):
-    st.success(message)
+    if message := st.session_state.pop("refresh_message", None):
+        st.success(message)
 
-watchlist_df, history_map = REPO.fetch_watchlist_snapshot(REPO_CTX.watchlist_id)
+    watchlist_df, history_map = REPO.fetch_watchlist_snapshot(REPO_CTX.watchlist_id)
+else:
+    if not DATABASE_URL:
+        st.info("DATABASE_URL not set – falling back to live yfinance data (no persistence).")
+    elif PERSISTENCE_ERROR:
+        st.warning(f"Database unavailable (`{PERSISTENCE_ERROR}`). Using live yfinance data only.")
+    if st.button("Refresh live market data", type="secondary"):
+        load_live_watchlist_snapshot.clear()
+        st.experimental_rerun()
+    watchlist_df, history_map = load_live_watchlist_snapshot()
 
 if watchlist_df.empty:
-    st.warning("No cached market data yet. Click **Refresh market data from source** to seed the database.")
+    st.warning("No market data yet. Use the refresh button above to load the latest snapshot.")
 else:
     header_cols = st.columns([0.4, 1.1, 2.2, 1, 1, 1, 1])
     for col, label in zip(header_cols, ["", "Ticker", "Name", "Last", "1D", "1W", "1M"]):
