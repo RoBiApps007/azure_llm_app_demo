@@ -162,6 +162,7 @@ def build_plotly_dash_chart(
     show_macd: bool,
     show_rsi: bool,
     show_bbands: bool,
+    price_scale: str,
 ) -> go.Figure:
     enriched = compute_cached_indicators(history)
     if enriched.empty:
