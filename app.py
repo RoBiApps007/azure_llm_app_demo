@@ -91,6 +91,67 @@ def compute_cached_indicators(history: pd.DataFrame) -> pd.DataFrame:
     return compute_indicators(history)
 
 
+def compute_barometer_signals(history: pd.DataFrame) -> list[dict[str, object]]:
+    if history.empty or "Close" not in history:
+        return []
+    close_series = history["Close"]
+    if isinstance(close_series, pd.DataFrame):
+        close_series = close_series.iloc[:, 0]
+    close_series = close_series.dropna()
+    if len(close_series) < 6:
+        return []
+    enriched = compute_cached_indicators(history)
+    latest_rsi = None
+    latest_macd_hist = None
+    if not enriched.empty:
+        if "RSI" in enriched:
+            latest_rsi = float(enriched["RSI"].iloc[-1])
+        if "MACD_hist" in enriched:
+            latest_macd_hist = float(enriched["MACD_hist"].iloc[-1])
+
+    horizons = [
+        ("Next day", 1),
+        ("Next 3 days", 3),
+        ("Next week", 5),
+    ]
+    cards: list[dict[str, object]] = []
+    for label, days in horizons:
+        if len(close_series) <= days:
+            continue
+        past_value = float(close_series.iloc[-(days + 1)])
+        if past_value == 0:
+            continue
+        change = ((float(close_series.iloc[-1]) - past_value) / past_value) * 100
+        if change > 1:
+            bias = "Buy bias"
+        elif change < -1:
+            bias = "Sell bias"
+        else:
+            bias = "Hold"
+        rationale = []
+        if latest_rsi is not None:
+            if latest_rsi < 30:
+                rationale.append("RSI oversold")
+            elif latest_rsi > 70:
+                rationale.append("RSI overbought")
+        if latest_macd_hist is not None:
+            if latest_macd_hist > 0:
+                rationale.append("MACD momentum up")
+            elif latest_macd_hist < 0:
+                rationale.append("MACD momentum down")
+        if not rationale:
+            rationale.append("Neutral momentum")
+        cards.append(
+            {
+                "horizon": label,
+                "bias": bias,
+                "change": change,
+                "rationale": ", ".join(rationale),
+            }
+        )
+    return cards
+
+
 def build_plotly_dash_chart(
     ticker: str,
     history: pd.DataFrame,
@@ -318,6 +379,16 @@ if current_view == "Monitoring":
         metric_cols[1].metric("1D", format_pct(row["1D"]))
         metric_cols[2].metric("1W", format_pct(row["1W"]))
         metric_cols[3].metric("1M", format_pct(row["1M"]))
+
+    barometer_cards = compute_barometer_signals(history_map.get(selected_ticker, pd.DataFrame()))
+    if barometer_cards:
+        st.write("### Short-term barometer")
+        card_cols = st.columns(len(barometer_cards))
+        for col, card in zip(card_cols, barometer_cards):
+            with col:
+                st.markdown(f"**{card['horizon']}**")
+                st.metric(card["bias"], f"{card['change']:+.2f}%")
+                st.caption(card["rationale"])
 
     if selected_ticker in history_map:
         st.write(f"### Plotly Dash view – {selected_ticker} ({selected_name})")
