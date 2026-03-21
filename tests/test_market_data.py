@@ -1,6 +1,7 @@
 """Tests for market_data helpers."""
 from __future__ import annotations
 
+import math
 from typing import Any, List
 
 import pandas as pd
@@ -66,3 +67,18 @@ def test_download_watchlist_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
     assert set(df["ticker"].tolist()) == {"AAA", "BBB"}
     assert "AAA" in history and "BBB" in history
     assert not df.empty
+
+
+def test_download_watchlist_snapshot_handles_zero_lookback(monkeypatch: pytest.MonkeyPatch) -> None:
+    history = make_history(10)
+    history.iloc[-2, history.columns.get_loc("Close")] = 0
+    history.iloc[-2, history.columns.get_loc("Adj Close")] = 0
+
+    def fake_download(*args: Any, **kwargs: Any) -> pd.DataFrame:
+        return history
+
+    monkeypatch.setattr(market_data.yf, "download", fake_download)
+    df, _ = market_data.download_watchlist_snapshot([
+        {"ticker": "AAA", "name": "Alpha"},
+    ])
+    assert math.isnan(df.iloc[0]["1D"])  # pct change should be NaN when prior value is zero
