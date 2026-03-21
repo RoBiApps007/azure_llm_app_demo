@@ -57,6 +57,8 @@ WATCHLIST_CHOICES = tuple((item["ticker"], item["name"]) for item in DEFAULT_WAT
 WATCHLIST_LABEL_MAP = {f"{ticker} — {name}": (ticker, name) for ticker, name in WATCHLIST_CHOICES}
 WATCHLIST_LABELS = list(WATCHLIST_LABEL_MAP.keys())
 TIMEFRAME_WINDOWS = {"1M": 30, "3M": 90, "6M": 180}
+TIMEFRAME_OPTIONS = ["1M", "3M", "6M"]
+SAMPLE_FREQUENCIES = {"Weekly": "W", "Daily": "D"}
 
 st.set_page_config(page_title="Bi-Lytix Assessment", layout="wide")
 
@@ -64,6 +66,24 @@ st.set_page_config(page_title="Bi-Lytix Assessment", layout="wide")
 def load_live_watchlist_snapshot(watchlist: tuple[tuple[str, str], ...]) -> tuple[pd.DataFrame, Dict[str, pd.DataFrame]]:
     options = [{"ticker": ticker, "name": name} for ticker, name in watchlist]
     return download_watchlist_snapshot(options)
+
+
+def resample_history(history: pd.DataFrame, rule: str) -> pd.DataFrame:
+    if rule == "D":
+        return history
+    base = history.copy()
+    if "Adj Close" not in base.columns and "Close" in base.columns:
+        base["Adj Close"] = base["Close"]
+    agg = {
+        "Open": "first",
+        "High": "max",
+        "Low": "min",
+        "Close": "last",
+        "Adj Close": "last",
+        "Volume": "sum",
+    }
+    resampled = base.resample(rule).agg(agg).dropna()
+    return resampled
 
 
 @st.cache_data(ttl=900)
@@ -192,6 +212,22 @@ def build_plotly_dash_chart(
         template="plotly_white",
         margin=dict(l=40, r=20, t=60, b=40),
     )
+    price_row = row_index["price"]
+    fig.update_yaxes(type=price_scale, row=price_row, col=1)
+    fig.update_xaxes(
+        rangeselector=dict(
+            buttons=[
+                dict(count=1, label="1M", step="month", stepmode="backward"),
+                dict(count=3, label="3M", step="month", stepmode="backward"),
+                dict(count=6, label="6M", step="month", stepmode="backward"),
+                dict(step="all"),
+            ]
+        ),
+        rangeslider=dict(visible=True),
+        type="date",
+        row=price_row,
+        col=1,
+    )
     return fig
 
 
@@ -250,7 +286,9 @@ if current_view == "Monitoring":
     selection_col, indicator_col = st.columns([3, 1])
     with selection_col:
         ticker_label = st.selectbox("Choose a ticker to analyze", WATCHLIST_LABELS, key="watchlist_selector")
-        timeframe_label = st.selectbox("Timeframe", list(TIMEFRAME_WINDOWS.keys()), index=0, key="timeframe_select")
+        timeframe_label = st.selectbox("Timeframe", TIMEFRAME_OPTIONS, index=1, key="timeframe_select")
+        freq_label = st.selectbox("Sampling", list(SAMPLE_FREQUENCIES.keys()), index=0, key="freq_select")
+        scale_label = st.selectbox("Price scale", ["Linear", "Log"], index=0, key="scale_select")
         window_days = TIMEFRAME_WINDOWS[timeframe_label]
     with indicator_col:
         st.write("### Indicators")
@@ -261,6 +299,8 @@ if current_view == "Monitoring":
         show_rsi = st.checkbox("RSI", value=True)
 
     selected_ticker, selected_name = WATCHLIST_LABEL_MAP[ticker_label]
+    price_scale = "log" if scale_label == "Log" else "linear"
+    sampling_rule = SAMPLE_FREQUENCIES[freq_label]
     st.caption("Selection pulls the latest OHLC snapshot and indicators directly from yfinance.")
 
     try:
@@ -282,15 +322,17 @@ if current_view == "Monitoring":
     if selected_ticker in history_map:
         st.write(f"### Plotly Dash view – {selected_ticker} ({selected_name})")
         selected_history = history_map[selected_ticker]
+        resampled_history = resample_history(selected_history, sampling_rule)
         chart = build_plotly_dash_chart(
             selected_ticker,
-            selected_history,
+            resampled_history,
             window_days,
             show_sma20=show_sma20,
             show_sma50=show_sma50,
             show_macd=show_macd,
             show_rsi=show_rsi,
             show_bbands=show_bbands,
+            price_scale=price_scale,
         )
         if chart.data:
             st.plotly_chart(chart, use_container_width=True)
