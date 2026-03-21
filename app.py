@@ -59,8 +59,14 @@ WATCHLIST_LABELS = list(WATCHLIST_LABEL_MAP.keys())
 TIMEFRAME_WINDOWS = {"1M": 30, "3M": 90, "6M": 180}
 TIMEFRAME_OPTIONS = ["1M", "3M", "6M"]
 SAMPLE_FREQUENCIES = {"Weekly": "W", "Daily": "D"}
+LOGO_PATH = Path(__file__).parent / "assets/bibroker-logo.jpg"
+LOGO_SRC = str(LOGO_PATH)
 
-st.set_page_config(page_title="Bi-Lytix Assessment", layout="wide")
+st.set_page_config(
+    page_title="Bi-Lytix Assessment",
+    layout="wide",
+    page_icon=LOGO_SRC if LOGO_PATH.exists() else None,
+)
 
 @st.cache_data(ttl=600, show_spinner="Loading live market data…")
 def load_live_watchlist_snapshot(watchlist: tuple[tuple[str, str], ...]) -> tuple[pd.DataFrame, Dict[str, pd.DataFrame]]:
@@ -341,6 +347,8 @@ with st.sidebar:
         st.info("Viewing build & release notes. Switch back to Monitoring to run signals.")
 
 if current_view == "Monitoring":
+    if LOGO_PATH.exists():
+        st.image(LOGO_SRC, width=180)
     st.title("Bi-Lytix Assessment")
     st.caption("Backend-first workflow: MACD + RSI combo, daily 06:00 assessments")
 
