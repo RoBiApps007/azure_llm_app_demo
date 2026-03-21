@@ -36,7 +36,10 @@ def calculate_pct_changes(price_series: pd.Series, windows: Dict[str, int] | Non
             pct_changes[label] = float("nan")
             continue
         past_value = price_series.iloc[-(steps + 1)]
-        pct_changes[label] = ((latest_price - past_value) / past_value) * 100 if past_value else float("nan")
+        if pd.isna(past_value) or past_value == 0:
+            pct_changes[label] = float("nan")
+            continue
+        pct_changes[label] = ((latest_price - past_value) / past_value) * 100
     return pct_changes
 
 
