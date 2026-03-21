@@ -142,7 +142,7 @@ st.table(DEFAULT_WATCHLIST)
 st.write("### Watchlist performance snapshot")
 persistence_enabled = REPO is not None
 if persistence_enabled:
-    if st.button("Refresh market data from source", type="secondary"):
+    if st.button("Sync database cache", type="secondary"):
         with st.spinner("Fetching latest OHLC data and persisting to MySQL…"):
             updates = REPO.refresh_watchlist_history(REPO_CTX.watchlist_id, DEFAULT_WATCHLIST)
         st.session_state["refresh_message"] = f"Updated {len(updates)} tickers from yfinance."
@@ -150,20 +150,33 @@ if persistence_enabled:
 
     if message := st.session_state.pop("refresh_message", None):
         st.success(message)
-
-    watchlist_df, history_map = REPO.fetch_watchlist_snapshot(REPO_CTX.watchlist_id)
 else:
     if not DATABASE_URL:
-        st.info("DATABASE_URL not set – falling back to live yfinance data (no persistence).")
+        st.info("DATABASE_URL not set – running live-only snapshots via yfinance.")
     elif PERSISTENCE_ERROR:
         st.warning(f"Database unavailable (`{PERSISTENCE_ERROR}`). Using live yfinance data only.")
-    if st.button("Refresh live market data", type="secondary"):
-        load_live_watchlist_snapshot.clear()
-        st.experimental_rerun()
-    watchlist_df, history_map = load_live_watchlist_snapshot()
+
+live_clicked = st.button("Load live market data", type="primary")
+if live_clicked:
+    load_live_watchlist_snapshot.clear()
+    with st.spinner("Fetching latest OHLC data from yfinance…"):
+        snapshot = load_live_watchlist_snapshot()
+    st.session_state["watchlist_snapshot"] = snapshot
+    df_preview = snapshot[0]
+    if not df_preview.empty:
+        tickers = df_preview["ticker"].dropna().tolist()
+        if tickers:
+            st.session_state["selected_ticker"] = tickers[0]
+
+snapshot = st.session_state.get("watchlist_snapshot")
+if snapshot:
+    watchlist_df, history_map = snapshot
+else:
+    watchlist_df = pd.DataFrame()
+    history_map = {}
 
 if watchlist_df.empty:
-    st.warning("No market data yet. Use the refresh button above to load the latest snapshot.")
+    st.warning("No market data yet. Click **Load live market data** above to fetch the latest snapshot.")
 else:
     header_cols = st.columns([0.4, 1.1, 2.2, 1, 1, 1, 1])
     for col, label in zip(header_cols, ["", "Ticker", "Name", "Last", "1D", "1W", "1M"]):
