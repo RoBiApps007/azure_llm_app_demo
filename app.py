@@ -294,13 +294,21 @@ if current_view == "Monitoring":
     elif not watchlist_df.empty:
         st.info("Select a ticker with available history to render the chart.")
 
-    notes = st.text_area("Optional analyst notes / overrides")
+    st.write("### Signal generation")
+    note_mode = st.radio("Mode", ("Auto", "Add analyst notes"), horizontal=True, key="note_mode")
+    trigger_signal = st.button("Generate signal", type="primary")
+    notes = ""
+    if note_mode == "Add analyst notes":
+        notes = st.text_area(
+            "Analyst notes",
+            help="These notes are appended to the MACD+RSI prompt before the LLM generates a signal.",
+        )
 
-    if st.button("Generate signal", type="primary"):
+    if trigger_signal:
         try:
             result = generate_signal(
                 tickers=[item["ticker"] for item in DEFAULT_WATCHLIST],
-                notes=notes,
+                notes=notes or None,
                 timeout=timeout,
                 retries=int(retries),
             )
@@ -309,7 +317,7 @@ if current_view == "Monitoring":
         except Exception as exc:  # noqa: BLE001
             st.error(f"Failed to generate signal: {exc}")
     else:
-        st.info("Set notes (optional) and click *Generate signal* to run the MACD+RSI assessment.")
+        st.info("Choose Auto for a vanilla MACD+RSI run or add notes to guide the signal before hitting *Generate*. ")
 else:
     render_about()
 
