@@ -201,14 +201,18 @@ if current_view == "Monitoring":
     live_clicked = st.button("Load live market data", type="primary")
     if live_clicked:
         load_live_watchlist_snapshot.clear()
-        with st.spinner("Fetching latest OHLC data from yfinance…"):
-            snapshot = load_live_watchlist_snapshot()
-        st.session_state["watchlist_snapshot"] = snapshot
-        df_preview = snapshot[0]
-        if not df_preview.empty:
-            tickers = df_preview["ticker"].dropna().tolist()
-            if tickers:
-                st.session_state["selected_ticker"] = tickers[0]
+        try:
+            with st.spinner("Fetching latest OHLC data from yfinance…"):
+                snapshot = load_live_watchlist_snapshot()
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Failed to load live data: {exc}")
+        else:
+            st.session_state["watchlist_snapshot"] = snapshot
+            df_preview = snapshot[0]
+            if not df_preview.empty:
+                tickers = df_preview["ticker"].dropna().tolist()
+                if tickers:
+                    st.session_state["selected_ticker"] = tickers[0]
 
     snapshot = st.session_state.get("watchlist_snapshot")
     if snapshot:
