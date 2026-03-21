@@ -86,9 +86,16 @@ def download_watchlist_snapshot(
             continue
         if df.empty:
             continue
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        if "Adj Close" not in df.columns and "Close" in df.columns:
+            df["Adj Close"] = df["Close"]
         df.index = pd.to_datetime(df.index)
         history_map[ticker] = df
-        price_series = df["Close"].dropna()
+        close_series = df["Close"]
+        if isinstance(close_series, pd.DataFrame):
+            close_series = close_series.iloc[:, 0]
+        price_series = close_series.dropna()
         if price_series.empty:
             continue
         latest_price = price_series.iloc[-1]
