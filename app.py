@@ -53,16 +53,16 @@ RELEASE_NOTES = [
         ],
     },
 ]
+WATCHLIST_CHOICES = tuple((item["ticker"], item["name"]) for item in DEFAULT_WATCHLIST)
+WATCHLIST_LABEL_MAP = {f"{ticker} — {name}": (ticker, name) for ticker, name in WATCHLIST_CHOICES}
+WATCHLIST_LABELS = list(WATCHLIST_LABEL_MAP.keys())
 
 st.set_page_config(page_title="Bi-Lytix Assessment", layout="wide")
 
-def set_selected_ticker(ticker: str) -> None:
-    st.session_state["selected_ticker"] = ticker
-
-
 @st.cache_data(ttl=600, show_spinner="Loading live market data…")
-def load_live_watchlist_snapshot() -> tuple[pd.DataFrame, Dict[str, pd.DataFrame]]:
-    return download_watchlist_snapshot(DEFAULT_WATCHLIST)
+def load_live_watchlist_snapshot(watchlist: tuple[tuple[str, str], ...]) -> tuple[pd.DataFrame, Dict[str, pd.DataFrame]]:
+    options = [{"ticker": ticker, "name": name} for ticker, name in watchlist]
+    return download_watchlist_snapshot(options)
 
 
 @st.cache_data(ttl=900)
@@ -192,63 +192,29 @@ if current_view == "Monitoring":
     st.title("Bi-Lytix Assessment")
     st.caption("Backend-first workflow: MACD + RSI combo, daily 06:00 assessments")
 
-    st.write("### Default watchlist")
-    st.table(DEFAULT_WATCHLIST)
+    st.write("### Watchlist selection")
+    ticker_label = st.selectbox("Choose a ticker to analyze", WATCHLIST_LABELS, key="watchlist_selector")
+    selected_ticker, selected_name = WATCHLIST_LABEL_MAP[ticker_label]
+    st.caption("Selecting a ticker pulls the latest OHLC snapshot and indicators from yfinance.")
 
-    st.write("### Watchlist performance snapshot")
-    st.caption("Live yfinance snapshot (no database dependency).")
-
-    live_clicked = st.button("Load live market data", type="primary")
-    if live_clicked:
-        load_live_watchlist_snapshot.clear()
-        try:
-            with st.spinner("Fetching latest OHLC data from yfinance…"):
-                snapshot = load_live_watchlist_snapshot()
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Failed to load live data: {exc}")
-        else:
-            st.session_state["watchlist_snapshot"] = snapshot
-            df_preview = snapshot[0]
-            if not df_preview.empty:
-                tickers = df_preview["ticker"].dropna().tolist()
-                if tickers:
-                    st.session_state["selected_ticker"] = tickers[0]
-
-    snapshot = st.session_state.get("watchlist_snapshot")
-    if snapshot:
-        watchlist_df, history_map = snapshot
-    else:
+    try:
+        watchlist_df, history_map = load_live_watchlist_snapshot(((selected_ticker, selected_name),))
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"Failed to load live data: {exc}")
         watchlist_df = pd.DataFrame()
         history_map = {}
-
     if watchlist_df.empty:
-        st.warning("No market data yet. Click **Load live market data** above to fetch the latest snapshot.")
+        st.warning("No live data returned for the selected ticker.")
     else:
-        header_cols = st.columns([0.4, 1.1, 2.2, 1, 1, 1, 1])
-        for col, label in zip(header_cols, ["", "Ticker", "Name", "Last", "1D", "1W", "1M"]):
-            col.markdown(f"**{label}**")
+        row = watchlist_df.iloc[0]
+        metric_cols = st.columns([1, 1, 1, 1])
+        metric_cols[0].metric("Last", format_price(row["price"]))
+        metric_cols[1].metric("1D", format_pct(row["1D"]))
+        metric_cols[2].metric("1W", format_pct(row["1W"]))
+        metric_cols[3].metric("1M", format_pct(row["1M"]))
 
-        for _, row in watchlist_df.iterrows():
-            row_cols = st.columns([0.4, 1.1, 2.2, 1, 1, 1, 1])
-            with row_cols[0]:
-                st.button("⋮", key=f"chart-{row['ticker']}", on_click=set_selected_ticker, args=(row["ticker"],))
-            row_cols[1].markdown(f"**{row['ticker']}**")
-            row_cols[2].markdown(row["name"])
-            row_cols[3].markdown(format_price(row["price"]))
-            row_cols[4].markdown(format_pct(row["1D"]))
-            row_cols[5].markdown(format_pct(row["1W"]))
-            row_cols[6].markdown(format_pct(row["1M"]))
-
-        st.caption("Click the three-dot button to open the Plotly Dash chart with MACD + RSI for that ticker.")
-
-    if "selected_ticker" not in st.session_state and not watchlist_df.empty:
-        available = watchlist_df["ticker"].dropna().tolist()
-        if available:
-            st.session_state["selected_ticker"] = available[0]
-
-    selected_ticker = st.session_state.get("selected_ticker")
-    if selected_ticker and selected_ticker in history_map:
-        st.write(f"### Plotly Dash view – {selected_ticker}")
+    if selected_ticker in history_map:
+        st.write(f"### Plotly Dash view – {selected_ticker} ({selected_name})")
         selected_history = history_map[selected_ticker]
         chart = build_plotly_dash_chart(selected_ticker, selected_history)
         st.plotly_chart(chart, use_container_width=True)
