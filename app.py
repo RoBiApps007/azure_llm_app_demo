@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 from typing import Dict
 import pandas as pd
 import platform
@@ -23,9 +24,10 @@ from signal_engine import (  # type: ignore
 
 APP_VERSION = "2026.03.21"
 SOURCE_REPO = "https://github.com/RoBiApps007/azure_llm_app_demo"
+BUILD_TIMESTAMP = datetime.fromtimestamp(Path(__file__).stat().st_mtime).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
 BUILD_METADATA = [
     ("App version", APP_VERSION),
-    ("Last updated", "2026-03-21"),
+    ("Last updated", BUILD_TIMESTAMP),
     ("Python", platform.python_version()),
     ("Streamlit", st.__version__),
     ("Data source", "Live yfinance OHLC (6M • 1D interval)"),
