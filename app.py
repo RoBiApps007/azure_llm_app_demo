@@ -82,10 +82,15 @@ def build_plotly_dash_chart(
     show_rsi: bool,
     show_bbands: bool,
 ) -> go.Figure:
-    history_window = history.tail(window_days)
+    enriched = compute_cached_indicators(history)
+    if enriched.empty:
+        enriched = history.copy()
+    history_window = enriched.tail(window_days)
+    if history_window.empty:
+        history_window = enriched
     if history_window.empty:
         return go.Figure()
-    enriched = compute_cached_indicators(history_window)
+    enriched = history_window
 
     rows = [("Price & Trend", "price"), ("Volume", "volume")]
     if show_macd:
