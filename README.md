@@ -34,6 +34,8 @@ bibroker-requirements/
 ## Local Streamlit preview
 
 ```
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 streamlit run app.py
 ```
@@ -41,7 +43,7 @@ streamlit run app.py
 ## Local REST API (FastAPI)
 
 ```
-pip install -r requirements.txt
+source .venv/bin/activate
 uvicorn api:app --reload --port 8001
 ```
 
@@ -51,6 +53,18 @@ curl -X POST http://localhost:8001/signal \\
   -H "Content-Type: application/json" \\
   -d '{"tickers": ["ACAG.VI", "GOOG"], "notes": "test run"}'
 ```
+
+## Linting and automated tests
+
+After activating the virtual environment:
+
+```
+pip install -r requirements-dev.txt
+ruff check .
+pytest --cov=.
+```
+
+CI mirrors the same steps via `.github/workflows/ci.yml` on every push/pull request against `main`.
 
 Set these environment variables (can go into `.env`):
 - `LYTIX_JUNIOR_FOUNDRY_URL` – Azure OpenAI/Foundry endpoint
