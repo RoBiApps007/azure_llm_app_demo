@@ -6,5 +6,3 @@ uvicorn[standard]>=0.29.0
 pandas>=2.2.2
 yfinance>=0.2.52
 plotly>=5.22.0
-sqlalchemy>=2.0.30
-pymysql>=1.1.0

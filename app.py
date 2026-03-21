@@ -1,4 +1,3 @@
-import os
 from datetime import datetime
 from typing import Dict
 import pandas as pd
@@ -12,7 +11,6 @@ from market_data import (  # type: ignore
     format_pct,
     format_price,
 )
-from persistence import build_repository  # type: ignore
 from signal_engine import (  # type: ignore
     DEFAULT_TIMEOUT,
     DEFAULT_WATCHLIST,
@@ -25,24 +23,6 @@ from signal_engine import (  # type: ignore
 st.set_page_config(page_title="Bi-Lytix Assessment", layout="wide")
 st.title("Bi-Lytix Assessment")
 st.caption("Backend-first workflow: MACD + RSI combo, daily 06:00 assessments")
-
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-
-@st.cache_resource
-def bootstrap_repository(database_url: str):
-    return build_repository(database_url)
-
-
-REPO = None
-REPO_CTX = None
-PERSISTENCE_ERROR: str | None = None
-if DATABASE_URL:
-    try:
-        REPO, REPO_CTX = bootstrap_repository(DATABASE_URL)
-    except Exception as exc:  # noqa: BLE001
-        PERSISTENCE_ERROR = str(exc)
-
 
 def set_selected_ticker(ticker: str) -> None:
     st.session_state["selected_ticker"] = ticker
@@ -140,21 +120,7 @@ st.write("### Default watchlist")
 st.table(DEFAULT_WATCHLIST)
 
 st.write("### Watchlist performance snapshot")
-persistence_enabled = REPO is not None
-if persistence_enabled:
-    if st.button("Sync database cache", type="secondary"):
-        with st.spinner("Fetching latest OHLC data and persisting to MySQL…"):
-            updates = REPO.refresh_watchlist_history(REPO_CTX.watchlist_id, DEFAULT_WATCHLIST)
-        st.session_state["refresh_message"] = f"Updated {len(updates)} tickers from yfinance."
-        st.experimental_rerun()
-
-    if message := st.session_state.pop("refresh_message", None):
-        st.success(message)
-else:
-    if not DATABASE_URL:
-        st.info("DATABASE_URL not set – running live-only snapshots via yfinance.")
-    elif PERSISTENCE_ERROR:
-        st.warning(f"Database unavailable (`{PERSISTENCE_ERROR}`). Using live yfinance data only.")
+st.caption("Live yfinance snapshot (no database dependency).")
 
 live_clicked = st.button("Load live market data", type="primary")
 if live_clicked:
